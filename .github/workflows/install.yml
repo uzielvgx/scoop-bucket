@@ -1,0 +1,35 @@
+name: Native Scoop install
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  install:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          path: bucket-source
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ScoopInstaller/Scoop
+          ref: b588a06e41d920d2123ec70aee682bae14935939
+          persist-credentials: false
+          path: scoop-source
+      - name: Install and verify exact checked-out manifest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:SCOOP = Join-Path $env:RUNNER_TEMP 'vgxness-scoop-test'
+          $core = Join-Path $env:SCOOP 'apps/scoop/current'
+          New-Item -ItemType Directory -Path $core | Out-Null
+          Copy-Item -Path "$env:GITHUB_WORKSPACE/scoop-source/*" -Destination $core -Recurse
+          $scoop = Join-Path $core 'bin/scoop.ps1'
+          $manifest = Join-Path $env:GITHUB_WORKSPACE 'bucket-source/bucket/vgxness.json'
+          & $scoop install $manifest
+          if ($LASTEXITCODE -ne 0) { throw 'Scoop install failed' }
+          $prefix = & $scoop prefix vgxness
+          if ($LASTEXITCODE -ne 0) { throw 'Scoop prefix failed' }
+          $version = & "$prefix/vgxness.exe" version
+          $expected = (Get-Content $manifest -Raw | ConvertFrom-Json).version
+          if ($LASTEXITCODE -ne 0 -or $version -notcontains "version=v$expected") { throw 'Version mismatch' }
